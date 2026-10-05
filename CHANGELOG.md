@@ -5,6 +5,8 @@ Scrivi le novità sotto "Unreleased": `pnpm release` le sposta nella nuova versi
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-05
+
 ### Aggiunto
 
 - Riprendi una sessione (Ctrl+Shift+R o dalla sidebar): le ultime sessioni di Claude Code di tutti i progetti, con titolo, cartella, branch e ultimo prompt, e una ricerca. Scelta una, xclaude avvia `claude --resume` nella sua cartella.
