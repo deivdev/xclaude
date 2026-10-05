@@ -111,7 +111,6 @@ pub fn start(app: AppHandle) -> io::Result<Server> {
 /// a dev build and the installed app can run side by side. This removes the
 /// files of instances that are gone.
 pub fn remove_stale(dir: &Path) {
-    let _ = fs::remove_file(dir.join("claude-settings.json")); // name used before 1.0
     #[cfg(target_os = "linux")]
     for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
         let name = entry.file_name();

@@ -213,7 +213,7 @@ function summary() {
 }
 
 function renderRecent() {
-  const dirs = recent();
+  const dirs = settings.recent;
   const box = $("recent");
   box.innerHTML = dirs.length ? `<span class="lbl">Recenti</span>` : "";
   for (const d of dirs) {
@@ -303,10 +303,6 @@ function onInput(s: Session, data: string) {
     (s.status === "waiting" && /^(\r|\x1b|[1-9])$/.test(data));
   if (ends) s.armed = Date.now();
 }
-
-/* ---------- sessions ---------- */
-
-const recent = () => settings.recent;
 
 /* ---------- theme ---------- */
 
@@ -459,7 +455,7 @@ function closeSession(s: Session) {
 }
 
 async function newSession() {
-  const dir = await open({ directory: true, multiple: false, defaultPath: recent()[0] ?? home, title: "Cartella del progetto" });
+  const dir = await open({ directory: true, multiple: false, defaultPath: settings.recent[0] ?? home, title: "Cartella del progetto" });
   if (typeof dir === "string") await createSession(dir);
 }
 
