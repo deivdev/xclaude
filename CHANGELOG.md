@@ -5,6 +5,8 @@ Scrivi le novità sotto "Unreleased": `pnpm release` le sposta nella nuova versi
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-05
+
 ### Aggiunto
 
 - Più sessioni di Claude Code in una finestra, ognuna in una PTY con la shell dell'utente (`$SHELL -l -i`); uscendo da Claude Code resta la shell.
