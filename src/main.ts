@@ -21,11 +21,23 @@ interface Info {
 
 interface StatusEvent {
   id: string;
+  claude_id: string | null;
   status: Exclude<Status, "starting">;
   detail: string;
   cwd: string | null;
   prompt: string | null;
   info: Info | null;
+}
+
+/** A Claude Code session on disk, from `past_sessions`. */
+interface PastSession {
+  id: string;
+  cwd: string;
+  title: string;
+  last_prompt: string | null;
+  branch: string | null;
+  modified: number;
+  running: boolean;
 }
 
 type Theme = "system" | "dark" | "light";
@@ -39,6 +51,8 @@ interface Settings {
 
 interface Session {
   id: string;
+  /** Claude Code's session id, from the hooks (or the one being resumed). */
+  claudeId: string | null;
   cwd: string;
   branch: string | null;
   title: string;
@@ -105,7 +119,8 @@ const clock = (ms: number) => {
 };
 const ago = (ms: number) => {
   const m = Math.floor(ms / 60000);
-  return m < 1 ? "ora" : m < 60 ? `${m} min fa` : `${Math.floor(m / 60)} h fa`;
+  const h = Math.floor(m / 60);
+  return m < 1 ? "ora" : m < 60 ? `${m} min fa` : h < 24 ? `${h} h fa` : `${Math.floor(h / 24)} g fa`;
 };
 const ktok = (n: number) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`);
 const prettyModel = (m: string) => {
@@ -213,9 +228,15 @@ function summary() {
 }
 
 function renderRecent() {
+  void invoke<PastSession[]>("past_sessions", { limit: 30 }).then((all) => {
+    const list = all.filter(canPick).slice(0, 5);
+    const box = $("past");
+    box.innerHTML = list.length ? `<span class="lbl">Sessioni recenti</span>` : "";
+    box.append(...list.map((p) => pastRow(p, () => pick(p))));
+  });
   const dirs = settings.recent;
   const box = $("recent");
-  box.innerHTML = dirs.length ? `<span class="lbl">Recenti</span>` : "";
+  box.innerHTML = dirs.length ? `<span class="lbl">Cartelle recenti</span>` : "";
   for (const d of dirs) {
     const b = document.createElement("button");
     b.className = "btn";
@@ -280,6 +301,7 @@ function onHook(e: StatusEvent) {
   const s = sessions.find((x) => x.id === e.id);
   if (!s) return;
   s.armed = 0;
+  if (e.claude_id) s.claudeId = e.claude_id;
   if (e.cwd && e.cwd !== s.cwd) {
     s.cwd = e.cwd;
     refreshBranch(s);
@@ -349,7 +371,7 @@ const themeInputs = () => [...document.querySelectorAll<HTMLInputElement>('input
 const chosenTheme = () => (themeInputs().find((i) => i.checked)?.value ?? "system") as Theme;
 
 function openSettings() {
-  if ($settings.open) return;
+  if ($settings.open || $resume.open) return;
   for (const i of themeInputs()) i.checked = i.value === (settings.theme || "system");
   $skip.checked = settings.skip_permissions;
   $args.value = settings.claude_args;
@@ -370,13 +392,13 @@ $settings.addEventListener("close", () => {
   active?.term.focus();
 });
 
-async function createSession(cwd: string) {
+async function createSession(cwd: string, resume?: PastSession) {
   const el = document.createElement("div");
   el.className = "term";
   $terms.append(el);
   const { term, fit } = createTerminal(profile, terminalTheme(profile, dark), el, (data) => onInput(s, data));
   const s: Session = {
-    id: "", cwd, branch: null, title: "", prompt: "", status: "starting", detail: "", since: Date.now(),
+    id: "", claudeId: resume?.id ?? null, cwd, branch: null, title: "", prompt: resume?.title ?? "", status: "starting", detail: "", since: Date.now(),
     model: null, contextTokens: null, term, fit, el, card: document.createElement("div"), lastOutput: 0, armed: 0,
   };
   buildCard(s);
@@ -391,7 +413,7 @@ async function createSession(cwd: string) {
     term.write(new Uint8Array(buf));
   };
   try {
-    s.id = await invoke<string>("spawn_session", { cwd, cols: term.cols, rows: term.rows, output });
+    s.id = await invoke<string>("spawn_session", { cwd, cols: term.cols, rows: term.rows, resume: resume?.id ?? null, output });
   } catch (err) {
     term.write(`\r\n\x1b[31mNon riesco ad avviare la sessione: ${err}\x1b[0m\r\n`);
     setStatus(s, "ended", String(err));
@@ -454,6 +476,106 @@ function closeSession(s: Session) {
   removeSession(s);
 }
 
+/* ---------- resume dialog ---------- */
+
+const $resume = $<HTMLDialogElement>("resume");
+const $filter = $<HTMLInputElement>("r-filter");
+let past: PastSession[] = [];
+let shown: PastSession[] = [];
+let sel = 0;
+let loading = false;
+
+const openHere = (p: PastSession) => sessions.find((s) => s.claudeId === p.id);
+const canPick = (p: PastSession) => !p.running || !!openHere(p);
+
+function pastRow(p: PastSession, run: () => void) {
+  const b = document.createElement("button");
+  b.className = "ps";
+  b.type = "button";
+  const here = openHere(p);
+  const line = (cls: string, text: string) => {
+    const el = document.createElement("span");
+    el.className = cls;
+    el.textContent = text;
+    b.append(el);
+  };
+  line("ti", p.title);
+  line("tm", here ? "aperta" : ago(Date.now() - p.modified));
+  line("pt", tilde(p.cwd) + (p.branch ? ` · ${p.branch}` : ""));
+  if (p.last_prompt) line("lp", p.last_prompt);
+  if (here) b.title = "Già aperta in xclaude: vai alla sua card";
+  else if (p.running) {
+    b.disabled = true;
+    b.title = "Aperta in un altro terminale: chiudila lì per riprenderla qui";
+  }
+  b.addEventListener("click", run);
+  return b;
+}
+
+/** Resuming a session that is already open here just selects its card. */
+function pick(p: PastSession) {
+  if ($resume.open) $resume.close();
+  const here = openHere(p);
+  if (here) select(here);
+  else if (!p.running) void createSession(p.cwd, p);
+}
+
+/** Sessions open in another terminal go last, under their own label; the
+ * arrows and Enter only move through the ones that can be picked. */
+function renderPicker() {
+  const q = $filter.value.trim().toLowerCase();
+  const match = past.filter((p) => !q || [p.title, p.cwd, p.branch, p.last_prompt].some((t) => t?.toLowerCase().includes(q)));
+  shown = match.filter(canPick);
+  const busy = match.filter((p) => !canPick(p));
+  sel = Math.min(sel, Math.max(0, shown.length - 1));
+  const rows: HTMLElement[] = shown.map((p, i) => {
+    const row = pastRow(p, () => pick(p));
+    row.classList.toggle("sel", i === sel);
+    return row;
+  });
+  if (busy.length) {
+    const lbl = document.createElement("span");
+    lbl.className = "lbl";
+    lbl.textContent = "Aperte in un altro terminale";
+    rows.push(lbl, ...busy.map((p) => pastRow(p, () => {})));
+  }
+  const list = $("r-list");
+  list.replaceChildren(...rows);
+  list.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
+  $("r-empty").hidden = match.length > 0;
+  $("r-empty").textContent = loading ? "Carico le sessioni…" : past.length ? "Nessuna sessione corrisponde." : "Nessuna sessione di Claude Code da riprendere.";
+}
+
+// The list from the last opening shows at once, then the fresh one replaces it.
+async function openResume() {
+  if ($resume.open || $settings.open) return;
+  $filter.value = "";
+  sel = 0;
+  loading = true;
+  renderPicker();
+  $resume.showModal();
+  past = await invoke<PastSession[]>("past_sessions", { limit: 100 }).catch(() => past);
+  loading = false;
+  if ($resume.open) renderPicker();
+}
+
+$filter.addEventListener("input", () => {
+  sel = 0;
+  renderPicker();
+});
+$filter.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    sel = Math.max(0, Math.min(shown.length - 1, sel + (e.key === "ArrowDown" ? 1 : -1)));
+    renderPicker();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    const p = shown[sel];
+    if (p && canPick(p)) pick(p);
+  }
+});
+$resume.addEventListener("close", () => active?.term.focus());
+
 async function newSession() {
   const dir = await open({ directory: true, multiple: false, defaultPath: settings.recent[0] ?? home, title: "Cartella del progetto" });
   if (typeof dir === "string") await createSession(dir);
@@ -504,6 +626,9 @@ window.addEventListener(
     if (ctrl && e.shiftKey && e.code === "KeyN") {
       stop(e);
       void newSession();
+    } else if (ctrl && e.shiftKey && e.code === "KeyR") {
+      stop(e);
+      void openResume();
     } else if (ctrl && e.shiftKey && e.code === "KeyW") {
       stop(e);
       if (active) closeSession(active);
@@ -529,6 +654,7 @@ window.addEventListener(
 window.addEventListener("contextmenu", (e) => e.preventDefault());
 
 for (const id of ["new", "new2", "new3"]) $(id).addEventListener("click", () => void newSession());
+for (const id of ["resume2", "resume3"]) $(id).addEventListener("click", () => void openResume());
 $("next").addEventListener("click", nextWaiting);
 $("open-settings").addEventListener("click", openSettings);
 $("w-min").addEventListener("click", () => void win.minimize());

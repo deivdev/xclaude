@@ -51,6 +51,8 @@ const MAX_BODY: u64 = 32 << 20;
 #[derive(Serialize, Clone)]
 struct StatusEvent {
     id: String,
+    /// Claude Code's own session id (it changes on /clear).
+    claude_id: Option<String>,
     status: &'static str,
     detail: String,
     cwd: Option<String>,
@@ -94,6 +96,7 @@ pub fn start(app: AppHandle) -> io::Result<Server> {
                 "session-status",
                 StatusEvent {
                     id,
+                    claude_id: input["session_id"].as_str().map(String::from),
                     status,
                     detail,
                     cwd: input["cwd"].as_str().map(String::from),

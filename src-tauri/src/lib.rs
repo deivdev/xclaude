@@ -1,3 +1,4 @@
+mod history;
 mod hooks;
 mod profile;
 mod pty;
@@ -62,6 +63,7 @@ pub fn run() {
             profile::terminal_profile,
             profile::system_dark,
             git_branch,
+            history::past_sessions,
             settings::get_settings,
             settings::set_settings,
         ])

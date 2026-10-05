@@ -46,10 +46,18 @@ struct SessionExit {
 const INHERITED_CLAUDE_VARS: &[&str] =
     &["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_SSE_PORT"];
 
+/// A Claude Code session id goes into a shell command line: hex and dashes only.
+fn resume_id(id: &str) -> Result<&str, String> {
+    let ok = !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-');
+    ok.then_some(id).ok_or_else(|| format!("id di sessione non valido: {id}"))
+}
+
 /// Starts `claude` in the user's interactive login shell, so PATH, aliases and
 /// rc files are the same as in a normal terminal. When claude exits the user is
-/// left at a shell prompt in the same terminal.
+/// left at a shell prompt in the same terminal. `resume` is a Claude Code
+/// session to continue instead of starting a new one.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_session(
     app: AppHandle,
     state: State<Sessions>,
@@ -57,8 +65,10 @@ pub fn spawn_session(
     cwd: String,
     cols: u16,
     rows: u16,
+    resume: Option<String>,
     output: Channel<InvokeResponseBody>,
 ) -> Result<String, String> {
+    let resume = resume.as_deref().map(resume_id).transpose()?;
     let id = format!("s{}", state.next_id.fetch_add(1, Ordering::Relaxed));
 
     let pair = native_pty_system()
@@ -67,7 +77,7 @@ pub fn spawn_session(
 
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
     let mut cmd = CommandBuilder::new(&shell);
-    let script = format!(r#"{}; exec "$SHELL" -l -i"#, store.get().claude_command());
+    let script = format!(r#"{}; exec "$SHELL" -l -i"#, store.get().claude_command(resume));
     cmd.args(["-l", "-i", "-c", &script]);
     cmd.cwd(&cwd);
     for var in INHERITED_CLAUDE_VARS {
@@ -127,5 +137,18 @@ pub fn resize_session(state: State<Sessions>, id: String, cols: u16, rows: u16) 
 pub fn kill_session(state: State<Sessions>, id: String) {
     if let Some(mut s) = state.map.lock().unwrap().remove(&id) {
         let _ = s.killer.kill();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resume_ids_are_shell_safe() {
+        assert_eq!(resume_id("647077ea-5ca5-49f7-ac6b-46f738add82f"), Ok("647077ea-5ca5-49f7-ac6b-46f738add82f"));
+        assert!(resume_id("").is_err());
+        assert!(resume_id("x; rm -rf ~").is_err());
+        assert!(resume_id("$(id)").is_err());
     }
 }

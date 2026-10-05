@@ -19,9 +19,14 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// What the session shell runs to start Claude Code.
-    pub fn claude_command(&self) -> String {
+    /// What the session shell runs to start Claude Code, optionally resuming a
+    /// session (an id already checked by `pty::resume_id`).
+    pub fn claude_command(&self, resume: Option<&str>) -> String {
         let mut cmd = String::from(r#"claude --settings "$XCLAUDE_SETTINGS""#);
+        if let Some(id) = resume {
+            cmd.push_str(" --resume ");
+            cmd.push_str(id);
+        }
         if self.skip_permissions {
             cmd.push_str(" --dangerously-skip-permissions");
         }
@@ -73,12 +78,12 @@ mod tests {
     #[test]
     fn builds_claude_command() {
         let mut s = Settings::default();
-        assert_eq!(s.claude_command(), r#"claude --settings "$XCLAUDE_SETTINGS""#);
+        assert_eq!(s.claude_command(None), r#"claude --settings "$XCLAUDE_SETTINGS""#);
         s.skip_permissions = true;
         s.claude_args = " --model opus\n--verbose ".into();
         assert_eq!(
-            s.claude_command(),
-            r#"claude --settings "$XCLAUDE_SETTINGS" --dangerously-skip-permissions --model opus --verbose"#
+            s.claude_command(Some("0b5f-a1")),
+            r#"claude --settings "$XCLAUDE_SETTINGS" --resume 0b5f-a1 --dangerously-skip-permissions --model opus --verbose"#
         );
     }
 }
