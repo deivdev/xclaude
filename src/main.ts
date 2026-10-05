@@ -1,0 +1,594 @@
+import "@xterm/xterm/css/xterm.css";
+import "./style.css";
+import type { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
+import { getVersion } from "@tauri-apps/api/app";
+import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { homeDir } from "@tauri-apps/api/path";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open } from "@tauri-apps/plugin-dialog";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
+import { createTerminal, loadProfile, terminalTheme, type Profile } from "./terminal";
+
+type Status = "starting" | "ready" | "working" | "idle" | "waiting" | "ended";
+
+interface Info {
+  model: string | null;
+  context_tokens: number | null;
+  last_text: string | null;
+}
+
+interface StatusEvent {
+  id: string;
+  status: Exclude<Status, "starting">;
+  detail: string;
+  cwd: string | null;
+  prompt: string | null;
+  info: Info | null;
+}
+
+type Theme = "system" | "dark" | "light";
+
+interface Settings {
+  skip_permissions: boolean;
+  claude_args: string;
+  theme: Theme | "";
+  recent: string[];
+}
+
+interface Session {
+  id: string;
+  cwd: string;
+  branch: string | null;
+  title: string;
+  prompt: string;
+  status: Status;
+  detail: string;
+  since: number;
+  model: string | null;
+  contextTokens: number | null;
+  term: Terminal;
+  fit: FitAddon;
+  el: HTMLDivElement;
+  card: HTMLDivElement;
+  lastOutput: number;
+  /** Set when the user presses a key that may end the turn without a hook (Esc, Ctrl+C, a menu choice). */
+  armed: number;
+}
+
+const LABEL: Record<Status, string> = {
+  starting: "Avvio",
+  ready: "Pronta",
+  working: "Lavora",
+  idle: "Finito",
+  waiting: "Ti aspetta",
+  ended: "Shell",
+};
+const DEFAULT_DETAIL: Record<Status, string> = {
+  starting: "avvio di Claude Code…",
+  ready: "scrivi un prompt",
+  working: "sta pensando",
+  idle: "aspetta il prossimo prompt",
+  waiting: "ti aspetta",
+  ended: "Claude Code è chiuso",
+};
+const GLYPH: Record<Status, string> = { starting: "·", ready: "›", working: "", idle: "✓", waiting: "!", ended: "$" };
+const SPIN = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"];
+
+const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const $list = $("list");
+const $terms = $("terms");
+const $empty = $("empty");
+const $toasts = $("toasts");
+const win = getCurrentWindow();
+
+const sessions: Session[] = [];
+let active: Session | null = null;
+let profile: Profile;
+let settings: Settings = { skip_permissions: false, claude_args: "", theme: "system", recent: [] };
+let systemDark = true;
+let dark = true;
+let home = "";
+let spin = 0;
+let hooksWarned = false;
+
+/* ---------- formatting ---------- */
+
+const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+const basename = (p: string) => p.replace(/\/+$/, "").split("/").pop() || p;
+const tilde = (p: string) => (home && p.startsWith(home) ? "~" + p.slice(home.length) : p);
+const plain = (t: string) => t.replace(/[`*_#>]+/g, "").replace(/\s+/g, " ").trim();
+const clock = (ms: number) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
+const ago = (ms: number) => {
+  const m = Math.floor(ms / 60000);
+  return m < 1 ? "ora" : m < 60 ? `${m} min fa` : `${Math.floor(m / 60)} h fa`;
+};
+const ktok = (n: number) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`);
+const prettyModel = (m: string) => {
+  const r = /claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?!\d)/.exec(m);
+  return r ? `${r[1][0].toUpperCase()}${r[1].slice(1)} ${r[2]}${r[3] ? "." + r[3] : ""}` : m;
+};
+/** Claude Code prefixes the terminal title with a spinner glyph. */
+const cleanTitle = (t: string) => {
+  const c = t.replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  return /^claude( code)?$/i.test(c) ? "" : c;
+};
+const titleOf = (s: Session) => s.title || s.prompt || "Nuova sessione";
+const timeOf = (s: Session) => {
+  const d = Date.now() - s.since;
+  return s.status === "working" || s.status === "waiting" ? clock(d) : ago(d);
+};
+
+/* ---------- rendering ---------- */
+
+function buildCard(s: Session) {
+  const card = s.card;
+  card.className = "card";
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.innerHTML = `<span class="gl" aria-hidden="true"></span><span class="ti"></span><span class="tm"></span><span class="pt"></span><span class="dt"><b></b><span class="dx"></span></span>
+    <button class="btn x" type="button" title="Chiudi sessione (Ctrl+Shift+W)" aria-label="Chiudi sessione"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button>`;
+  card.addEventListener("click", () => select(s));
+  card.addEventListener("keydown", (e) => {
+    if (e.target === card && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      select(s);
+    }
+  });
+  const x = card.querySelector<HTMLButtonElement>(".x")!;
+  x.addEventListener("click", (e) => {
+    e.stopPropagation();
+    // A click on a busy session only arms the button; the second one closes it.
+    const busy = s.status === "working" || s.status === "waiting";
+    if (busy && !x.classList.contains("confirm")) {
+      x.classList.add("confirm");
+      x.textContent = "Chiudi?";
+      setTimeout(() => {
+        x.classList.remove("confirm");
+        x.innerHTML = `<svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>`;
+      }, 3000);
+      return;
+    }
+    closeSession(s);
+  });
+}
+
+function render(s: Session) {
+  const on = s === active;
+  const c = s.card;
+  c.className = `card st-${s.status}${on ? " active" : ""}`;
+  c.setAttribute("aria-current", on ? "true" : "false");
+  const detail = s.detail || DEFAULT_DETAIL[s.status];
+  c.title = `${titleOf(s)}\n${tilde(s.cwd)}\n${LABEL[s.status]} · ${detail}`;
+  c.querySelector(".ti")!.textContent = titleOf(s);
+  c.querySelector(".pt")!.textContent = basename(s.cwd) + (s.branch ? ` · ${s.branch}` : "");
+  c.querySelector(".dt b")!.textContent = LABEL[s.status];
+  c.querySelector(".dx")!.textContent = " · " + detail;
+  renderGlyph(s);
+  renderTime(s);
+  if (on) renderHeader(s);
+}
+
+function renderGlyph(s: Session) {
+  s.card.querySelector(".gl")!.textContent = s.status === "working" ? SPIN[spin % SPIN.length] : GLYPH[s.status];
+}
+
+function renderTime(s: Session) {
+  s.card.querySelector(".tm")!.textContent = timeOf(s);
+}
+
+function renderHeader(s: Session | null) {
+  const strip = $("strip");
+  const title = $("wtitle");
+  if (!s) {
+    strip.innerHTML = "";
+    title.textContent = "";
+    return;
+  }
+  strip.innerHTML =
+    (s.model ? `<span>Modello <b>${esc(prettyModel(s.model))}</b></span>` : "") +
+    (s.contextTokens != null ? `<span>Contesto <b>${ktok(s.contextTokens)}</b> token</span>` : "") +
+    `<span class="sp">${esc(tilde(s.cwd))}${s.branch ? " · " + esc(s.branch) : ""}</span>`;
+  title.innerHTML = `<b>${esc(titleOf(s))}</b> — ${esc(basename(s.cwd))}`;
+}
+
+function summary() {
+  const n = (st: Status) => sessions.filter((s) => s.status === st).length;
+  const waiting = n("waiting");
+  $("counts").innerHTML = sessions.length
+    ? `<span style="--k:var(--wait)" title="Ti aspettano">${waiting}</span>` +
+      `<span style="--k:var(--work)" title="Lavorano">${n("working")}</span>` +
+      `<span style="--k:var(--idle)" title="Finite">${n("idle")}</span>`
+    : "";
+  const badge = $("badge");
+  badge.hidden = !waiting;
+  badge.textContent = String(waiting);
+  void win.setTitle(waiting ? `(${waiting}) xclaude` : "xclaude");
+  $empty.hidden = sessions.length > 0;
+  if (!sessions.length) renderRecent();
+}
+
+function renderRecent() {
+  const dirs = recent();
+  const box = $("recent");
+  box.innerHTML = dirs.length ? `<span class="lbl">Recenti</span>` : "";
+  for (const d of dirs) {
+    const b = document.createElement("button");
+    b.className = "btn";
+    b.type = "button";
+    b.textContent = tilde(d);
+    b.addEventListener("click", () => void createSession(d));
+    box.append(b);
+  }
+}
+
+function toast(opts: { glyph?: string; title: string; text?: string; action?: string; run?: () => void; attn?: boolean }) {
+  const el = document.createElement("div");
+  el.className = "toast" + (opts.attn ? " attn" : "");
+  el.innerHTML =
+    (opts.glyph ? `<span class="gl" aria-hidden="true">${esc(opts.glyph)}</span>` : "") +
+    `<div class="tx"><b>${esc(opts.title)}</b>${opts.text ? `<span>${esc(opts.text)}</span>` : ""}</div>` +
+    (opts.action ? `<button class="btn" type="button">${esc(opts.action)}</button>` : "");
+  el.querySelector("button")?.addEventListener("click", () => {
+    opts.run?.();
+    el.remove();
+  });
+  $toasts.prepend(el);
+  setTimeout(() => el.remove(), 8000);
+}
+
+/* ---------- state ---------- */
+
+function setStatus(s: Session, status: Status, detail = "") {
+  if (s.status !== status) {
+    s.status = status;
+    s.since = Date.now();
+    if (status === "waiting") void attention(s);
+  }
+  s.detail = detail;
+  render(s);
+  summary();
+}
+
+async function attention(s: Session) {
+  const focused = document.hasFocus();
+  const text = s.detail || DEFAULT_DETAIL.waiting;
+  if (s !== active || !focused) {
+    toast({ glyph: "!", title: `${basename(s.cwd)} ti aspetta`, text, action: "Apri", run: () => select(s), attn: true });
+  }
+  if (!focused) {
+    let ok = await isPermissionGranted();
+    if (!ok) ok = (await requestPermission()) === "granted";
+    if (ok) sendNotification({ title: `${basename(s.cwd)} ti aspetta`, body: text });
+  }
+}
+
+function refreshBranch(s: Session) {
+  void invoke<string | null>("git_branch", { cwd: s.cwd }).then((b) => {
+    if (b !== s.branch) {
+      s.branch = b;
+      render(s);
+    }
+  });
+}
+
+function onHook(e: StatusEvent) {
+  const s = sessions.find((x) => x.id === e.id);
+  if (!s) return;
+  s.armed = 0;
+  if (e.cwd && e.cwd !== s.cwd) {
+    s.cwd = e.cwd;
+    refreshBranch(s);
+  }
+  if (e.prompt && !s.prompt) s.prompt = e.prompt;
+  if (e.info) {
+    s.model = e.info.model ?? s.model;
+    s.contextTokens = e.info.context_tokens ?? s.contextTokens;
+  }
+  let detail = e.detail;
+  if (e.status === "idle") {
+    if (!detail && e.info?.last_text) detail = plain(e.info.last_text);
+    refreshBranch(s);
+  }
+  setStatus(s, e.status, detail);
+}
+
+function onInput(s: Session, data: string) {
+  void invoke("write_session", { id: s.id, data });
+  const ends = (s.status === "working" && (data === "\x1b" || data === "\x03")) ||
+    (s.status === "waiting" && /^(\r|\x1b|[1-9])$/.test(data));
+  if (ends) s.armed = Date.now();
+}
+
+/* ---------- sessions ---------- */
+
+const recent = () => settings.recent;
+
+/* ---------- theme ---------- */
+
+const isDark = (theme: Settings["theme"] = settings.theme) => (theme === "dark" ? true : theme === "light" ? false : systemDark);
+
+function applyTheme(nextDark: boolean) {
+  dark = nextDark;
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const theme = terminalTheme(profile, dark);
+  document.documentElement.style.setProperty("--term-bg", theme.background!);
+  for (const s of sessions) s.term.options.theme = theme;
+  // GTK widgets (the folder picker) follow too.
+  void win.setTheme(dark ? "dark" : "light").catch(() => {});
+}
+
+async function readSystemDark() {
+  const fromGnome = await invoke<boolean | null>("system_dark").catch(() => null);
+  return fromGnome ?? matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function saveSettings(next: Settings) {
+  settings = next;
+  return invoke("set_settings", { settings }).catch((err) =>
+    toast({ glyph: "!", title: "Impostazioni non salvate", text: String(err), attn: true }),
+  );
+}
+
+function remember(dir: string) {
+  void saveSettings({ ...settings, recent: [dir, ...settings.recent.filter((d) => d !== dir)].slice(0, 8) });
+}
+
+/* ---------- settings dialog ---------- */
+
+const $settings = $<HTMLDialogElement>("settings");
+const $skip = $<HTMLInputElement>("s-skip");
+const $args = $<HTMLInputElement>("s-args");
+
+function renderPreview() {
+  const parts = ["claude", $skip.checked ? "--dangerously-skip-permissions" : "", $args.value.trim()];
+  $("s-preview").textContent = parts.filter(Boolean).join(" ");
+}
+
+const themeInputs = () => [...document.querySelectorAll<HTMLInputElement>('input[name="s-theme"]')];
+const chosenTheme = () => (themeInputs().find((i) => i.checked)?.value ?? "system") as Theme;
+
+function openSettings() {
+  if ($settings.open) return;
+  for (const i of themeInputs()) i.checked = i.value === (settings.theme || "system");
+  $skip.checked = settings.skip_permissions;
+  $args.value = settings.claude_args;
+  renderPreview();
+  $settings.showModal();
+}
+
+// The theme previews live; closing without saving puts the saved one back.
+for (const i of themeInputs()) i.addEventListener("change", () => applyTheme(isDark(chosenTheme())));
+$skip.addEventListener("change", renderPreview);
+$args.addEventListener("input", renderPreview);
+$("s-cancel").addEventListener("click", () => $settings.close());
+$("settings-form").addEventListener("submit", () => {
+  void saveSettings({ ...settings, theme: chosenTheme(), skip_permissions: $skip.checked, claude_args: $args.value.trim() });
+});
+$settings.addEventListener("close", () => {
+  applyTheme(isDark());
+  active?.term.focus();
+});
+
+async function createSession(cwd: string) {
+  const el = document.createElement("div");
+  el.className = "term";
+  $terms.append(el);
+  const { term, fit } = createTerminal(profile, terminalTheme(profile, dark), el, (data) => onInput(s, data));
+  const s: Session = {
+    id: "", cwd, branch: null, title: "", prompt: "", status: "starting", detail: "", since: Date.now(),
+    model: null, contextTokens: null, term, fit, el, card: document.createElement("div"), lastOutput: 0, armed: 0,
+  };
+  buildCard(s);
+  sessions.push(s);
+  $list.append(s.card);
+  select(s);
+  fit.fit();
+
+  const output = new Channel<ArrayBuffer>();
+  output.onmessage = (buf) => {
+    s.lastOutput = Date.now();
+    term.write(new Uint8Array(buf));
+  };
+  try {
+    s.id = await invoke<string>("spawn_session", { cwd, cols: term.cols, rows: term.rows, output });
+  } catch (err) {
+    term.write(`\r\n\x1b[31mNon riesco ad avviare la sessione: ${err}\x1b[0m\r\n`);
+    setStatus(s, "ended", String(err));
+    return;
+  }
+  term.onData((data) => onInput(s, data));
+  term.onResize(({ cols, rows }) => void invoke("resize_session", { id: s.id, cols, rows }));
+  term.onTitleChange((t) => {
+    const c = cleanTitle(t);
+    if (c && c !== s.title) {
+      s.title = c;
+      render(s);
+    }
+  });
+  remember(cwd);
+  refreshBranch(s);
+  render(s);
+  summary();
+
+  // SessionStart should arrive within a few seconds; if not, hooks are not reaching us.
+  setTimeout(() => {
+    if (s.status !== "starting" || !sessions.includes(s)) return;
+    setStatus(s, "ready", "stato non disponibile");
+    if (!hooksWarned) {
+      hooksWarned = true;
+      toast({ glyph: "!", title: "Gli hook di Claude Code non rispondono", text: "Le card non mostreranno lo stato delle sessioni.", attn: true });
+    }
+  }, 20000);
+}
+
+function select(s: Session | null) {
+  const prev = active;
+  active = s;
+  if (prev && prev !== s) {
+    prev.el.classList.remove("active");
+    render(prev);
+  }
+  if (!s) {
+    renderHeader(null);
+    return;
+  }
+  s.el.classList.add("active");
+  render(s);
+  s.term.focus();
+}
+
+function removeSession(s: Session) {
+  const i = sessions.indexOf(s);
+  if (i < 0) return;
+  sessions.splice(i, 1);
+  s.term.dispose();
+  s.el.remove();
+  s.card.remove();
+  if (active === s) select(sessions[Math.min(i, sessions.length - 1)] ?? null);
+  summary();
+}
+
+function closeSession(s: Session) {
+  if (s.id) void invoke("kill_session", { id: s.id });
+  removeSession(s);
+}
+
+async function newSession() {
+  const dir = await open({ directory: true, multiple: false, defaultPath: recent()[0] ?? home, title: "Cartella del progetto" });
+  if (typeof dir === "string") await createSession(dir);
+}
+
+function cycle(step: number) {
+  if (!sessions.length) return;
+  const i = active ? sessions.indexOf(active) : -1;
+  select(sessions[(i + step + sessions.length) % sessions.length]);
+}
+
+function nextWaiting() {
+  const i = active ? sessions.indexOf(active) : -1;
+  const order = [...sessions.slice(i + 1), ...sessions.slice(0, i + 1)];
+  const s = order.find((x) => x.status === "waiting");
+  if (s) select(s);
+}
+
+const busyCount = () => sessions.filter((s) => s.status === "working" || s.status === "waiting").length;
+
+// Closing xclaude ends every session: ask first when some are still busy.
+void win.onCloseRequested((e) => {
+  const busy = busyCount();
+  if (!busy) return;
+  e.preventDefault();
+  toast({
+    glyph: "!",
+    title: busy === 1 ? "Una sessione è ancora al lavoro" : `${busy} sessioni sono ancora al lavoro`,
+    text: "Chiudendo xclaude si chiudono anche loro.",
+    action: "Chiudi comunque",
+    run: () => void win.destroy(),
+    attn: true,
+  });
+});
+
+/* ---------- wiring ---------- */
+
+function stop(e: Event) {
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+// Capture phase: app shortcuts win over the terminal.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    const ctrl = e.ctrlKey && !e.altKey && !e.metaKey;
+    if (ctrl && e.shiftKey && e.code === "KeyN") {
+      stop(e);
+      void newSession();
+    } else if (ctrl && e.shiftKey && e.code === "KeyW") {
+      stop(e);
+      if (active) closeSession(active);
+    } else if (ctrl && !e.shiftKey && e.code === "Comma") {
+      stop(e);
+      openSettings();
+    } else if (ctrl && e.shiftKey && e.code === "KeyJ") {
+      stop(e);
+      nextWaiting();
+    } else if (ctrl && !e.shiftKey && (e.key === "PageDown" || e.key === "PageUp")) {
+      stop(e);
+      cycle(e.key === "PageDown" ? 1 : -1);
+    } else if (e.altKey && !e.ctrlKey && !e.shiftKey && /^Digit[1-9]$/.test(e.code)) {
+      const s = sessions[Number(e.code.slice(5)) - 1];
+      if (s) {
+        stop(e);
+        select(s);
+      }
+    }
+  },
+  true,
+);
+window.addEventListener("contextmenu", (e) => e.preventDefault());
+
+for (const id of ["new", "new2", "new3"]) $(id).addEventListener("click", () => void newSession());
+$("next").addEventListener("click", nextWaiting);
+$("open-settings").addEventListener("click", openSettings);
+$("w-min").addEventListener("click", () => void win.minimize());
+$("w-max").addEventListener("click", () => void win.toggleMaximize());
+$("w-close").addEventListener("click", () => void win.close());
+
+let fitQueued = false;
+new ResizeObserver(() => {
+  if (fitQueued) return;
+  fitQueued = true;
+  requestAnimationFrame(() => {
+    fitQueued = false;
+    for (const s of sessions) s.fit.fit();
+  });
+}).observe($terms);
+
+setInterval(() => {
+  spin++;
+  for (const s of sessions) if (s.status === "working") renderGlyph(s);
+}, 120);
+
+setInterval(() => {
+  const now = Date.now();
+  for (const s of sessions) {
+    renderTime(s);
+    // Esc / Ctrl+C / "No" end a turn without any hook: once the terminal goes
+    // quiet after such a key, the session is waiting for a new prompt.
+    if (s.armed && now - s.armed > 1500 && now - s.lastOutput > 1200 && (s.status === "working" || s.status === "waiting")) {
+      s.armed = 0;
+      setStatus(s, "idle", "interrotta");
+    }
+  }
+}, 500);
+
+async function main() {
+  [profile, home, settings, systemDark] = await Promise.all([
+    loadProfile(),
+    homeDir().catch(() => ""),
+    invoke<Settings>("get_settings"),
+    readSystemDark(),
+  ]);
+  applyTheme(isDark());
+  void getVersion().then((v) => ($("s-version").textContent = `xclaude ${v}`));
+  // Follow a system switch (quick settings) when the window comes back into focus.
+  void win.onFocusChanged(async ({ payload: focused }) => {
+    if (!focused || (settings.theme && settings.theme !== "system")) return;
+    systemDark = await readSystemDark();
+    if (isDark() !== dark) applyTheme(isDark());
+  });
+  await document.fonts.load(`${profile.font_size}px "${profile.font_family}"`).catch(() => {});
+  await listen<StatusEvent>("session-status", ({ payload }) => onHook(payload));
+  await listen<{ id: string }>("session-exit", ({ payload }) => {
+    const s = sessions.find((x) => x.id === payload.id);
+    if (s) removeSession(s);
+  });
+  summary();
+}
+
+void main();

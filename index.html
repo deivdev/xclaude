@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>xclaude</title>
+  </head>
+  <body>
+    <div class="win">
+      <header class="tb" data-tauri-drag-region>
+        <div class="logo" data-tauri-drag-region><i aria-hidden="true">&gt;_</i>xclaude</div>
+        <div class="wtitle" id="wtitle" data-tauri-drag-region></div>
+        <div class="r">
+          <button class="btn" id="open-settings" type="button" title="Impostazioni (Ctrl+,)" aria-label="Impostazioni">
+            <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v1.8M8 12.4v1.8M1.8 8h1.8M12.4 8h1.8M3.6 3.6l1.3 1.3M11.1 11.1l1.3 1.3M3.6 12.4l1.3-1.3M11.1 4.9l1.3-1.3" /></svg>
+          </button>
+          <button class="btn" id="next" type="button" title="Prossima sessione che ti aspetta (Ctrl+Shift+J)" aria-label="Prossima sessione che ti aspetta">
+            <svg viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1.2 1.5H2.8L4 11zM6.5 14h3" /></svg>
+            <span class="badge" id="badge" hidden>0</span>
+          </button>
+          <button class="btn" id="w-min" type="button" title="Riduci" aria-label="Riduci finestra"><svg viewBox="0 0 16 16"><path d="M4 8.5h8" /></svg></button>
+          <button class="btn" id="w-max" type="button" title="Massimizza" aria-label="Massimizza finestra"><svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1" /></svg></button>
+          <button class="btn" id="w-close" type="button" title="Chiudi" aria-label="Chiudi finestra"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg></button>
+        </div>
+      </header>
+      <div class="body">
+        <nav class="side" aria-label="Sessioni aperte">
+          <div class="sh">
+            <span class="lbl">Sessioni</span>
+            <span class="counts" id="counts"></span>
+            <button class="btn" id="new" type="button" title="Nuova sessione (Ctrl+Shift+N)" aria-label="Nuova sessione"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" /></svg></button>
+          </div>
+          <div class="list" id="list"></div>
+          <div class="foot">
+            <button class="btn" id="new2" type="button">
+              <svg viewBox="0 0 16 16"><path d="M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3A1 1 0 0 0 2 4.5zM8 7.2v3.6M6.2 9h3.6" /></svg>
+              Nuova sessione <kbd>Ctrl+Shift+N</kbd>
+            </button>
+          </div>
+        </nav>
+        <main class="main">
+          <div class="strip" id="strip"></div>
+          <div class="terms" id="terms"></div>
+          <div class="empty" id="empty" hidden>
+            <h1>Nessuna sessione aperta</h1>
+            <p>Scegli la cartella di un progetto: xclaude apre Claude Code lì dentro, nella tua shell.</p>
+            <button class="btn primary" id="new3" type="button">Apri una cartella</button>
+            <div class="recent" id="recent"></div>
+          </div>
+        </main>
+      </div>
+      <div class="toasts" id="toasts" aria-live="polite"></div>
+      <dialog class="dlg" id="settings" aria-labelledby="settings-title">
+        <form id="settings-form" method="dialog">
+          <h2 id="settings-title">Impostazioni</h2>
+          <div class="field">
+            <b id="s-theme-label">Tema</b>
+            <div class="seg" role="radiogroup" aria-labelledby="s-theme-label">
+              <label><input type="radio" name="s-theme" value="system" />Sistema</label>
+              <label><input type="radio" name="s-theme" value="dark" />Scuro</label>
+              <label><input type="radio" name="s-theme" value="light" />Chiaro</label>
+            </div>
+            <small>Perché anche i colori di Claude Code seguano il tema, in Claude Code scegli <code>/theme</code> → "Auto (match terminal)".</small>
+          </div>
+          <h3>Avvio di Claude Code</h3>
+          <p class="note">Vale per le sessioni che apri da adesso.</p>
+          <label class="opt">
+            <input type="checkbox" id="s-skip" />
+            <span>
+              <b>Avvia senza chiedere i permessi</b>
+              <small>Aggiunge <code>--dangerously-skip-permissions</code>: Claude esegue comandi e modifica file senza chiederti conferma.</small>
+            </span>
+          </label>
+          <label class="field" for="s-args">
+            <b>Altri argomenti per claude</b>
+            <input id="s-args" type="text" placeholder="es. --model opus" spellcheck="false" autocomplete="off" />
+          </label>
+          <div class="preview"><span>Comando</span><code id="s-preview"></code></div>
+          <div class="actions">
+            <span class="ver" id="s-version"></span>
+            <button class="btn" type="button" id="s-cancel">Annulla</button>
+            <button class="btn primary" type="submit" id="s-save">Salva</button>
+          </div>
+        </form>
+      </dialog>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
