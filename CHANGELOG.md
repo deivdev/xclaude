@@ -5,6 +5,8 @@ Write the changes under "Unreleased": `pnpm release` moves them into the new ver
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-06
+
 ### Added
 
 - `.deb`, `.rpm` and AppImage packages on the GitHub releases.
