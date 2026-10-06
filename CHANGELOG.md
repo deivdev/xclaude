@@ -5,6 +5,8 @@ Scrivi le novità sotto "Unreleased": `pnpm release` le sposta nella nuova versi
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-06
+
 ### Corretto
 
 - Il click centrale incollava la selezione due volte (WebKitGTK ≥ 2.46). Ora incolla una volta, come gnome-terminal: se il programma usa il mouse, il click va a lui, a meno di tenere Shift.
