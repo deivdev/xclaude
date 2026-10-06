@@ -1,47 +1,52 @@
 # Changelog
 
-Formato [Keep a Changelog](https://keepachangelog.com/it-IT/1.1.0/), versioni [SemVer](https://semver.org/lang/it/).
-Scrivi le novità sotto "Unreleased": `pnpm release` le sposta nella nuova versione.
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [SemVer](https://semver.org/).
+Write the changes under "Unreleased": `pnpm release` moves them into the new version.
 
 ## [Unreleased]
 
-### Modificato
+### Added
 
-- Licenza GPL-3.0.
-- La voce nel menu delle applicazioni è in inglese.
+- `.deb`, `.rpm` and AppImage packages on the GitHub releases.
+
+### Changed
+
+- GPL-3.0 license.
+- The app launcher entry is in English.
+- The changelog is in English.
 
 ## [1.2.0] - 2026-10-06
 
-### Aggiunto
+### Added
 
-- Interfaccia anche in inglese. La lingua si sceglie nelle impostazioni, sotto il tema: Sistema (inglese, o italiano se il sistema è in italiano), English, Italiano.
-- README in inglese, con immagini.
+- English interface. The language is chosen in the settings, below the theme: System (English, or Italian if the system is in Italian), English, Italiano.
+- README in English, with images.
 
 ## [1.1.1] - 2026-10-06
 
-### Corretto
+### Fixed
 
-- Il click centrale incollava la selezione due volte (WebKitGTK ≥ 2.46). Ora incolla una volta, come gnome-terminal: se il programma usa il mouse, il click va a lui, a meno di tenere Shift.
+- Middle click pasted the selection twice (WebKitGTK ≥ 2.46). It now pastes once, like gnome-terminal: if the program uses the mouse, the click goes to it, unless you hold Shift.
 
 ## [1.1.0] - 2026-10-05
 
-### Aggiunto
+### Added
 
-- Riprendi una sessione (Ctrl+Shift+R o dalla sidebar): le ultime sessioni di Claude Code di tutti i progetti, con titolo, cartella, branch e ultimo prompt, e una ricerca. Scelta una, xclaude avvia `claude --resume` nella sua cartella.
-- Le ultime sessioni da riprendere compaiono anche nella schermata senza sessioni aperte.
-- Una sessione già aperta in xclaude porta alla sua card; una aperta in un altro terminale resta in lista ma non si riprende finché non la chiudi lì.
+- Resume a session (Ctrl+Shift+R or from the sidebar): the latest Claude Code sessions from every project, with title, folder, branch and last prompt, and a search. Pick one and xclaude runs `claude --resume` in its folder.
+- The latest sessions to resume also show on the screen with no open sessions.
+- A session already open in xclaude takes you to its card; one open in another terminal stays in the list but cannot be resumed until you close it there.
 
 ## [1.0.0] - 2026-10-05
 
-### Aggiunto
+### Added
 
-- Più sessioni di Claude Code in una finestra, ognuna in una PTY con la shell dell'utente (`$SHELL -l -i`); uscendo da Claude Code resta la shell.
-- Sidebar con una card per sessione: titolo del task, progetto e branch, ultima azione, tempo nello stato.
-- Bordo della card acceso secondo lo stato, dagli hook HTTP di Claude Code: arancio lavora, verde finito, lavanda ti aspetta (permessi, domande, approvazione del piano).
-- Esc, Ctrl+C e i permessi rifiutati, che non generano hook, portano comunque la card a "finito".
-- Terminale xterm.js 6 (WebGL) con font, palette e cursore del profilo gnome-terminal; Ctrl+Shift+C/V, Ctrl+V a Claude Code, Shift+Enter per andare a capo.
-- Riga con modello, token di contesto e percorso della sessione attiva, letti dal transcript.
-- Toast e notifica desktop quando una sessione ti aspetta; il titolo della finestra conta le sessioni in attesa.
-- Impostazioni: tema sistema/scuro/chiaro, avvio con `--dangerously-skip-permissions`, argomenti extra per `claude`, cartelle recenti.
-- Scorciatoie: Ctrl+Shift+N nuova, Ctrl+Shift+W chiudi, Alt+1…9, Ctrl+PgSu/PgGiù, Ctrl+Shift+J prossima in attesa, Ctrl+, impostazioni.
-- Conferma prima di chiudere la finestra con sessioni al lavoro.
+- Several Claude Code sessions in one window, each in a PTY with the user's shell (`$SHELL -l -i`); when Claude Code exits, the shell is still there.
+- Sidebar with a card per session: task title, project and branch, last action, time in the current state.
+- The card border lights up with the state, from Claude Code's HTTP hooks: orange working, green done, lavender waiting for you (permissions, questions, plan approval).
+- Esc, Ctrl+C and denied permissions, which fire no hook, still bring the card to "done".
+- xterm.js 6 terminal (WebGL) with the font, palette and cursor of the gnome-terminal profile; Ctrl+Shift+C/V, Ctrl+V to Claude Code, Shift+Enter for a new line.
+- Line with model, context tokens and path of the active session, read from the transcript.
+- Toast and desktop notification when a session is waiting for you; the window title counts the waiting sessions.
+- Settings: system/dark/light theme, start with `--dangerously-skip-permissions`, extra arguments for `claude`, recent folders.
+- Shortcuts: Ctrl+Shift+N new, Ctrl+Shift+W close, Alt+1…9, Ctrl+PgUp/PgDn, Ctrl+Shift+J next waiting, Ctrl+, settings.
+- Confirmation before closing the window with sessions at work.

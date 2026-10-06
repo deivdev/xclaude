@@ -26,7 +26,14 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "rpm", "appimage"],
+    "category": "DeveloperTool",
+    "shortDescription": "Claude Code sessions with live status in one window",
+    "longDescription": "Run several Claude Code sessions side by side. Each session gets a card that lights up with its state, so you can see at a glance which one is working, which one is done and which one is waiting for you.",
+    "homepage": "https://github.com/deivdev/xclaude",
+    "publisher": "deivdev",
+    "license": "GPL-3.0-only",
+    "licenseFile": "../LICENSE",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

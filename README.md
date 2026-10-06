@@ -55,9 +55,18 @@ prompt. xclaude puts every session in one window and tells you which one needs y
 
 ## Install
 
+You need `claude` in the `PATH` of your login shell.
+
+Download the package for your distro from [Releases](https://github.com/deivdev/xclaude/releases/latest):
+
+- Fedora: `sudo dnf install ./xclaude-*.x86_64.rpm`
+- Debian, Ubuntu: `sudo apt install ./xclaude_*_amd64.deb`
+- Anywhere else: the `.AppImage`, made executable with `chmod +x`
+
+### From source
+
 Requirements:
 
-- `claude` in the `PATH` of your login shell
 - Rust, Node 20+, pnpm
 - Fedora: `sudo dnf install webkit2gtk4.1-devel gtk3-devel libsoup3-devel javascriptcoregtk4.1-devel librsvg2-devel libappindicator-gtk3-devel libxdo-devel`
 
@@ -88,9 +97,12 @@ The version lives in `package.json` (`tauri.conf.json` reads it from there).
 # 1. describe the changes under "Unreleased" in CHANGELOG.md and commit
 # 2. bump the version, roll the changelog, commit and tag vX.Y.Z (nothing is pushed)
 pnpm release patch        # or minor, major, 1.2.3
-# 3. build and install
-pnpm install-app
+# 3. publish: the tag starts a GitHub Actions build that drafts the release
+git push --follow-tags
 ```
+
+The draft gets the `.deb`, `.rpm` and AppImage, with the version's notes from the changelog;
+check it and publish it on GitHub.
 
 ## How the state works
 

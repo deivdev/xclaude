@@ -50,4 +50,4 @@ run("cargo", ["update", "--workspace", "--offline"], `${root}src-tauri`);
 run("git", ["add", "package.json", "CHANGELOG.md", "src-tauri/Cargo.toml", "src-tauri/Cargo.lock"]);
 run("git", ["commit", "-m", `release: v${next}`]);
 run("git", ["tag", "-a", `v${next}`, "-m", `xclaude ${next}`]);
-console.log(`v${next}: committed and tagged. Install it with: pnpm install-app`);
+console.log(`v${next}: committed and tagged. Publish it with: git push --follow-tags`);
