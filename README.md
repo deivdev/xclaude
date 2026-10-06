@@ -7,7 +7,7 @@ full terminal with the font and colors of your gnome-terminal profile.
 
 ![xclaude with five sessions: one waiting for a permission, two working, one done and one back at the shell](docs/hero.png)
 
-Tauri 2 (Rust) + xterm.js 6. Linux (GNOME); macOS not tested yet. The interface is in Italian.
+Tauri 2 (Rust) + xterm.js 6. Linux (GNOME); macOS not tested yet. The interface is in English and Italian.
 
 ## Why
 
@@ -28,7 +28,7 @@ prompt. xclaude puts every session in one window and tells you which one needs y
 - **Context at a glance.** Folder, git branch, model and context size of the active session.
 - **Resume past sessions.** Your recent Claude Code sessions from every project, searchable by title,
   folder, branch or last prompt. Pick one and xclaude runs `claude --resume` in its folder.
-- **Settings.** System, dark or light theme; start Claude Code with
+- **Settings.** System, dark or light theme; English or Italian (or the system language); start Claude Code with
   `--dangerously-skip-permissions`; extra arguments for `claude` (e.g. `--model opus`).
 
 ![The four states of a session card: working, waiting for you, done, back at the shell](docs/states.png)

@@ -14,6 +14,8 @@ pub struct Settings {
     pub claude_args: String,
     /// "system", "dark" or "light"; empty means "system".
     pub theme: String,
+    /// "system", "en" or "it"; empty means "system".
+    pub language: String,
     /// Recently opened project folders, newest first.
     pub recent: Vec<String>,
 }

@@ -48,13 +48,31 @@ const HOOKS: &[(&str, &str, Option<&str>)] = &[
 
 const MAX_BODY: u64 = 32 << 20;
 
+/// What the card says next to the state: a fixed phrase the UI words in its
+/// language (`key`, around `text`), or `text` as is. Empty: the UI's default.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+struct Detail {
+    key: Option<&'static str>,
+    text: String,
+}
+
+impl Detail {
+    fn text(text: impl Into<String>) -> Self {
+        Self { key: None, text: text.into() }
+    }
+
+    fn key(key: &'static str) -> Self {
+        Self { key: Some(key), text: String::new() }
+    }
+}
+
 #[derive(Serialize, Clone)]
 struct StatusEvent {
     id: String,
     /// Claude Code's own session id (it changes on /clear).
     claude_id: Option<String>,
     status: &'static str,
-    detail: String,
+    detail: Detail,
     cwd: Option<String>,
     prompt: Option<String>,
     info: Option<transcript::Info>,
@@ -153,36 +171,36 @@ pub fn write_settings(path: &Path, server: &Server) -> io::Result<()> {
     file.write_all(body.as_bytes())
 }
 
-/// Maps a hook to (status, detail). An empty detail lets the UI show its default.
-fn classify(route: &str, v: &Value) -> Option<(&'static str, String)> {
+/// Maps a hook to (status, detail).
+fn classify(route: &str, v: &Value) -> Option<(&'static str, Detail)> {
     let tool = v["tool_name"].as_str().unwrap_or_default();
     Some(match route {
         // A compaction restarts the session in the middle of a turn.
         "SessionStart" if v["source"] == "compact" => return None,
-        "SessionStart" => ("ready", String::new()),
-        "UserPromptSubmit" | "UserPromptExpansion" | "ElicitationResult" => ("working", String::new()),
+        "SessionStart" => ("ready", Detail::default()),
+        "UserPromptSubmit" | "UserPromptExpansion" | "ElicitationResult" => ("working", Detail::default()),
         "PreToolUse" if matches!(tool, "AskUserQuestion" | "ExitPlanMode") => ("waiting", waiting_detail(v)),
-        "PreToolUse" | "PostToolUse" | "PostToolUseFailure" => ("working", tool_call(v)),
+        "PreToolUse" | "PostToolUse" | "PostToolUseFailure" => ("working", Detail::text(tool_call(v))),
         "PermissionRequest" => ("waiting", waiting_detail(v)),
-        "NeedsInput" => ("waiting", v["message"].as_str().unwrap_or_default().to_string()),
-        "Elicitation" => ("waiting", "un server MCP chiede dei dati".into()),
-        "PreCompact" => ("working", "compatta il contesto".into()),
-        "PostCompact" if v["trigger"] == "manual" => ("idle", "contesto compattato".into()),
-        "PostCompact" => ("working", String::new()),
-        "Stop" => ("idle", String::new()),
-        "StopFailure" => ("idle", "si è fermata per un errore".into()),
-        "SessionEnd" => ("ended", String::new()),
+        "NeedsInput" => ("waiting", Detail::text(v["message"].as_str().unwrap_or_default())),
+        "Elicitation" => ("waiting", Detail::key("mcp")),
+        "PreCompact" => ("working", Detail::key("compacting")),
+        "PostCompact" if v["trigger"] == "manual" => ("idle", Detail::key("compacted")),
+        "PostCompact" => ("working", Detail::default()),
+        "Stop" => ("idle", Detail::default()),
+        "StopFailure" => ("idle", Detail::key("error")),
+        "SessionEnd" => ("ended", Detail::default()),
         _ => return None,
     })
 }
 
-fn waiting_detail(v: &Value) -> String {
+fn waiting_detail(v: &Value) -> Detail {
     match v["tool_name"].as_str().unwrap_or_default() {
         "AskUserQuestion" => v["tool_input"]["questions"][0]["question"]
             .as_str()
-            .map_or_else(|| "ha una domanda".into(), |q| clip(q, 160)),
-        "ExitPlanMode" => "approva il piano".into(),
-        _ => format!("permesso: {}", tool_call(v)),
+            .map_or_else(|| Detail::key("question"), |q| Detail::text(clip(q, 160))),
+        "ExitPlanMode" => Detail::key("plan"),
+        _ => Detail { key: Some("permission"), text: tool_call(v) },
     }
 }
 
@@ -229,10 +247,13 @@ mod tests {
     #[test]
     fn maps_hooks_to_states() {
         let bash = json!({"tool_name": "Bash", "tool_input": {"command": "cargo check\n--all"}, "cwd": "/p"});
-        assert_eq!(classify("PreToolUse", &bash), Some(("working", "Bash(cargo check)".into())));
-        assert_eq!(classify("PermissionRequest", &bash), Some(("waiting", "permesso: Bash(cargo check)".into())));
+        assert_eq!(classify("PreToolUse", &bash), Some(("working", Detail::text("Bash(cargo check)"))));
+        let permission = Detail { key: Some("permission"), text: "Bash(cargo check)".into() };
+        assert_eq!(classify("PermissionRequest", &bash), Some(("waiting", permission)));
         let ask = json!({"tool_name": "AskUserQuestion", "tool_input": {"questions": [{"question": "Quale?"}]}});
-        assert_eq!(classify("PreToolUse", &ask), Some(("waiting", "Quale?".into())));
+        assert_eq!(classify("PreToolUse", &ask), Some(("waiting", Detail::text("Quale?"))));
+        let plan = json!({"tool_name": "ExitPlanMode", "tool_input": {}});
+        assert_eq!(classify("PreToolUse", &plan), Some(("waiting", Detail::key("plan"))));
         assert_eq!(classify("PostToolUse", &ask).unwrap().0, "working");
         assert_eq!(classify("SessionStart", &json!({"source": "compact"})), None);
         assert_eq!(classify("Stop", &json!({})).unwrap().0, "idle");

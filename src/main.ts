@@ -10,6 +10,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 import { createTerminal, loadProfile, terminalTheme, type Profile } from "./terminal";
+import { L, resolveLang, setLang } from "./i18n";
 
 type Status = "starting" | "ready" | "working" | "idle" | "waiting" | "ended";
 
@@ -19,11 +20,17 @@ interface Info {
   last_text: string | null;
 }
 
+/** What a card says next to its state: a fixed phrase (`key`, around `text`) or `text` as is. */
+interface Detail {
+  key: string | null;
+  text: string;
+}
+
 interface StatusEvent {
   id: string;
   claude_id: string | null;
   status: Exclude<Status, "starting">;
-  detail: string;
+  detail: Detail;
   cwd: string | null;
   prompt: string | null;
   info: Info | null;
@@ -41,11 +48,13 @@ interface PastSession {
 }
 
 type Theme = "system" | "dark" | "light";
+type Language = "system" | "en" | "it";
 
 interface Settings {
   skip_permissions: boolean;
   claude_args: string;
   theme: Theme | "";
+  language: Language | "";
   recent: string[];
 }
 
@@ -58,7 +67,7 @@ interface Session {
   title: string;
   prompt: string;
   status: Status;
-  detail: string;
+  detail: Detail;
   since: number;
   model: string | null;
   contextTokens: number | null;
@@ -71,22 +80,6 @@ interface Session {
   armed: number;
 }
 
-const LABEL: Record<Status, string> = {
-  starting: "Avvio",
-  ready: "Pronta",
-  working: "Lavora",
-  idle: "Finito",
-  waiting: "Ti aspetta",
-  ended: "Shell",
-};
-const DEFAULT_DETAIL: Record<Status, string> = {
-  starting: "avvio di Claude Code…",
-  ready: "scrivi un prompt",
-  working: "sta pensando",
-  idle: "aspetta il prossimo prompt",
-  waiting: "ti aspetta",
-  ended: "Claude Code è chiuso",
-};
 const GLYPH: Record<Status, string> = { starting: "·", ready: "›", working: "", idle: "✓", waiting: "!", ended: "$" };
 const SPIN = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"];
 
@@ -100,7 +93,7 @@ const win = getCurrentWindow();
 const sessions: Session[] = [];
 let active: Session | null = null;
 let profile: Profile;
-let settings: Settings = { skip_permissions: false, claude_args: "", theme: "system", recent: [] };
+let settings: Settings = { skip_permissions: false, claude_args: "", theme: "system", language: "system", recent: [] };
 let systemDark = true;
 let dark = true;
 let home = "";
@@ -120,7 +113,7 @@ const clock = (ms: number) => {
 const ago = (ms: number) => {
   const m = Math.floor(ms / 60000);
   const h = Math.floor(m / 60);
-  return m < 1 ? "ora" : m < 60 ? `${m} min fa` : h < 24 ? `${h} h fa` : `${Math.floor(h / 24)} g fa`;
+  return m < 1 ? L.now : m < 60 ? L.ago(m, "min") : h < 24 ? L.ago(h, "h") : L.ago(Math.floor(h / 24), "d");
 };
 const ktok = (n: number) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`);
 const prettyModel = (m: string) => {
@@ -132,7 +125,14 @@ const cleanTitle = (t: string) => {
   const c = t.replace(/^[^\p{L}\p{N}]+/u, "").trim();
   return /^claude( code)?$/i.test(c) ? "" : c;
 };
-const titleOf = (s: Session) => s.title || s.prompt || "Nuova sessione";
+const titleOf = (s: Session) => s.title || s.prompt || L.newSession;
+const NO_DETAIL: Detail = { key: null, text: "" };
+const said = (text: string): Detail => ({ key: null, text });
+const detailOf = (s: Session) => {
+  const { key, text } = s.detail;
+  const fixed = key ? L.detail[key] : undefined;
+  return fixed ? fixed.replace("{}", text) : text || L.defaultDetail[s.status];
+};
 const timeOf = (s: Session) => {
   const d = Date.now() - s.since;
   return s.status === "working" || s.status === "waiting" ? clock(d) : ago(d);
@@ -146,7 +146,7 @@ function buildCard(s: Session) {
   card.tabIndex = 0;
   card.setAttribute("role", "button");
   card.innerHTML = `<span class="gl" aria-hidden="true"></span><span class="ti"></span><span class="tm"></span><span class="pt"></span><span class="dt"><b></b><span class="dx"></span></span>
-    <button class="btn x" type="button" title="Chiudi sessione (Ctrl+Shift+W)" aria-label="Chiudi sessione"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button>`;
+    <button class="btn x" type="button"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button>`;
   card.addEventListener("click", () => select(s));
   card.addEventListener("keydown", (e) => {
     if (e.target === card && (e.key === "Enter" || e.key === " ")) {
@@ -161,7 +161,7 @@ function buildCard(s: Session) {
     const busy = s.status === "working" || s.status === "waiting";
     if (busy && !x.classList.contains("confirm")) {
       x.classList.add("confirm");
-      x.textContent = "Chiudi?";
+      x.textContent = L.closeConfirm;
       setTimeout(() => {
         x.classList.remove("confirm");
         x.innerHTML = `<svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>`;
@@ -177,12 +177,15 @@ function render(s: Session) {
   const c = s.card;
   c.className = `card st-${s.status}${on ? " active" : ""}`;
   c.setAttribute("aria-current", on ? "true" : "false");
-  const detail = s.detail || DEFAULT_DETAIL[s.status];
-  c.title = `${titleOf(s)}\n${tilde(s.cwd)}\n${LABEL[s.status]} · ${detail}`;
+  const detail = detailOf(s);
+  c.title = `${titleOf(s)}\n${tilde(s.cwd)}\n${L.label[s.status]} · ${detail}`;
   c.querySelector(".ti")!.textContent = titleOf(s);
   c.querySelector(".pt")!.textContent = basename(s.cwd) + (s.branch ? ` · ${s.branch}` : "");
-  c.querySelector(".dt b")!.textContent = LABEL[s.status];
+  c.querySelector(".dt b")!.textContent = L.label[s.status];
   c.querySelector(".dx")!.textContent = " · " + detail;
+  const x = c.querySelector<HTMLButtonElement>(".x")!;
+  x.title = `${L.closeSession} (Ctrl+Shift+W)`;
+  x.setAttribute("aria-label", L.closeSession);
   renderGlyph(s);
   renderTime(s);
   if (on) renderHeader(s);
@@ -205,8 +208,8 @@ function renderHeader(s: Session | null) {
     return;
   }
   strip.innerHTML =
-    (s.model ? `<span>Modello <b>${esc(prettyModel(s.model))}</b></span>` : "") +
-    (s.contextTokens != null ? `<span>Contesto <b>${ktok(s.contextTokens)}</b> token</span>` : "") +
+    (s.model ? `<span>${L.model} <b>${esc(prettyModel(s.model))}</b></span>` : "") +
+    (s.contextTokens != null ? `<span>${L.context(ktok(s.contextTokens))}</span>` : "") +
     `<span class="sp">${esc(tilde(s.cwd))}${s.branch ? " · " + esc(s.branch) : ""}</span>`;
   title.innerHTML = `<b>${esc(titleOf(s))}</b> — ${esc(basename(s.cwd))}`;
 }
@@ -215,9 +218,9 @@ function summary() {
   const n = (st: Status) => sessions.filter((s) => s.status === st).length;
   const waiting = n("waiting");
   $("counts").innerHTML = sessions.length
-    ? `<span style="--k:var(--wait)" title="Ti aspettano">${waiting}</span>` +
-      `<span style="--k:var(--work)" title="Lavorano">${n("working")}</span>` +
-      `<span style="--k:var(--idle)" title="Finite">${n("idle")}</span>`
+    ? `<span style="--k:var(--wait)" title="${L.countWaiting}">${waiting}</span>` +
+      `<span style="--k:var(--work)" title="${L.countWorking}">${n("working")}</span>` +
+      `<span style="--k:var(--idle)" title="${L.countIdle}">${n("idle")}</span>`
     : "";
   const badge = $("badge");
   badge.hidden = !waiting;
@@ -231,12 +234,12 @@ function renderRecent() {
   void invoke<PastSession[]>("past_sessions", { limit: 30 }).then((all) => {
     const list = all.filter(canPick).slice(0, 5);
     const box = $("past");
-    box.innerHTML = list.length ? `<span class="lbl">Sessioni recenti</span>` : "";
+    box.innerHTML = list.length ? `<span class="lbl">${L.recentSessions}</span>` : "";
     box.append(...list.map((p) => pastRow(p, () => pick(p))));
   });
   const dirs = settings.recent;
   const box = $("recent");
-  box.innerHTML = dirs.length ? `<span class="lbl">Cartelle recenti</span>` : "";
+  box.innerHTML = dirs.length ? `<span class="lbl">${L.recentFolders}</span>` : "";
   for (const d of dirs) {
     const b = document.createElement("button");
     b.className = "btn";
@@ -264,7 +267,7 @@ function toast(opts: { glyph?: string; title: string; text?: string; action?: st
 
 /* ---------- state ---------- */
 
-function setStatus(s: Session, status: Status, detail = "") {
+function setStatus(s: Session, status: Status, detail = NO_DETAIL) {
   if (s.status !== status) {
     s.status = status;
     s.since = Date.now();
@@ -277,14 +280,14 @@ function setStatus(s: Session, status: Status, detail = "") {
 
 async function attention(s: Session) {
   const focused = document.hasFocus();
-  const text = s.detail || DEFAULT_DETAIL.waiting;
+  const text = detailOf(s);
   if (s !== active || !focused) {
-    toast({ glyph: "!", title: `${basename(s.cwd)} ti aspetta`, text, action: "Apri", run: () => select(s), attn: true });
+    toast({ glyph: "!", title: L.needsYou(basename(s.cwd)), text, action: L.open, run: () => select(s), attn: true });
   }
   if (!focused) {
     let ok = await isPermissionGranted();
     if (!ok) ok = (await requestPermission()) === "granted";
-    if (ok) sendNotification({ title: `${basename(s.cwd)} ti aspetta`, body: text });
+    if (ok) sendNotification({ title: L.needsYou(basename(s.cwd)), body: text });
   }
 }
 
@@ -313,7 +316,7 @@ function onHook(e: StatusEvent) {
   }
   let detail = e.detail;
   if (e.status === "idle") {
-    if (!detail && e.info?.last_text) detail = plain(e.info.last_text);
+    if (!detail.key && !detail.text && e.info?.last_text) detail = said(plain(e.info.last_text));
     refreshBranch(s);
   }
   setStatus(s, e.status, detail);
@@ -345,10 +348,21 @@ async function readSystemDark() {
   return fromGnome ?? matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+/* ---------- language ---------- */
+
+/** Rewrites the page and every card in the chosen language. */
+function applyLanguage(choice: Settings["language"] = settings.language) {
+  setLang(resolveLang(choice));
+  for (const s of sessions) render(s);
+  renderHeader(active);
+  summary();
+  if ($resume.open) renderPicker();
+}
+
 function saveSettings(next: Settings) {
   settings = next;
   return invoke("set_settings", { settings }).catch((err) =>
-    toast({ glyph: "!", title: "Impostazioni non salvate", text: String(err), attn: true }),
+    toast({ glyph: "!", title: L.settingsNotSaved, text: String(err), attn: true }),
   );
 }
 
@@ -369,26 +383,37 @@ function renderPreview() {
 
 const themeInputs = () => [...document.querySelectorAll<HTMLInputElement>('input[name="s-theme"]')];
 const chosenTheme = () => (themeInputs().find((i) => i.checked)?.value ?? "system") as Theme;
+const langInputs = () => [...document.querySelectorAll<HTMLInputElement>('input[name="s-lang"]')];
+const chosenLang = () => (langInputs().find((i) => i.checked)?.value ?? "system") as Language;
 
 function openSettings() {
   if ($settings.open || $resume.open) return;
   for (const i of themeInputs()) i.checked = i.value === (settings.theme || "system");
+  for (const i of langInputs()) i.checked = i.value === (settings.language || "system");
   $skip.checked = settings.skip_permissions;
   $args.value = settings.claude_args;
   renderPreview();
   $settings.showModal();
 }
 
-// The theme previews live; closing without saving puts the saved one back.
+// Theme and language preview live; closing without saving puts the saved ones back.
 for (const i of themeInputs()) i.addEventListener("change", () => applyTheme(isDark(chosenTheme())));
+for (const i of langInputs()) i.addEventListener("change", () => applyLanguage(chosenLang()));
 $skip.addEventListener("change", renderPreview);
 $args.addEventListener("input", renderPreview);
 $("s-cancel").addEventListener("click", () => $settings.close());
 $("settings-form").addEventListener("submit", () => {
-  void saveSettings({ ...settings, theme: chosenTheme(), skip_permissions: $skip.checked, claude_args: $args.value.trim() });
+  void saveSettings({
+    ...settings,
+    theme: chosenTheme(),
+    language: chosenLang(),
+    skip_permissions: $skip.checked,
+    claude_args: $args.value.trim(),
+  });
 });
 $settings.addEventListener("close", () => {
   applyTheme(isDark());
+  applyLanguage();
   active?.term.focus();
 });
 
@@ -398,7 +423,7 @@ async function createSession(cwd: string, resume?: PastSession) {
   $terms.append(el);
   const { term, fit } = createTerminal(profile, terminalTheme(profile, dark), el, (data) => onInput(s, data));
   const s: Session = {
-    id: "", claudeId: resume?.id ?? null, cwd, branch: null, title: "", prompt: resume?.title ?? "", status: "starting", detail: "", since: Date.now(),
+    id: "", claudeId: resume?.id ?? null, cwd, branch: null, title: "", prompt: resume?.title ?? "", status: "starting", detail: NO_DETAIL, since: Date.now(),
     model: null, contextTokens: null, term, fit, el, card: document.createElement("div"), lastOutput: 0, armed: 0,
   };
   buildCard(s);
@@ -415,8 +440,8 @@ async function createSession(cwd: string, resume?: PastSession) {
   try {
     s.id = await invoke<string>("spawn_session", { cwd, cols: term.cols, rows: term.rows, resume: resume?.id ?? null, output });
   } catch (err) {
-    term.write(`\r\n\x1b[31mNon riesco ad avviare la sessione: ${err}\x1b[0m\r\n`);
-    setStatus(s, "ended", String(err));
+    term.write(`\r\n\x1b[31m${L.cannotStart}: ${err}\x1b[0m\r\n`);
+    setStatus(s, "ended", said(String(err)));
     return;
   }
   term.onData((data) => onInput(s, data));
@@ -436,10 +461,10 @@ async function createSession(cwd: string, resume?: PastSession) {
   // SessionStart should arrive within a few seconds; if not, hooks are not reaching us.
   setTimeout(() => {
     if (s.status !== "starting" || !sessions.includes(s)) return;
-    setStatus(s, "ready", "stato non disponibile");
+    setStatus(s, "ready", { key: "noStatus", text: "" });
     if (!hooksWarned) {
       hooksWarned = true;
-      toast({ glyph: "!", title: "Gli hook di Claude Code non rispondono", text: "Le card non mostreranno lo stato delle sessioni.", attn: true });
+      toast({ glyph: "!", title: L.hooksSilent, text: L.hooksSilentText, attn: true });
     }
   }, 20000);
 }
@@ -500,13 +525,13 @@ function pastRow(p: PastSession, run: () => void) {
     b.append(el);
   };
   line("ti", p.title);
-  line("tm", here ? "aperta" : ago(Date.now() - p.modified));
+  line("tm", here ? L.pastOpen : ago(Date.now() - p.modified));
   line("pt", tilde(p.cwd) + (p.branch ? ` · ${p.branch}` : ""));
   if (p.last_prompt) line("lp", p.last_prompt);
-  if (here) b.title = "Già aperta in xclaude: vai alla sua card";
+  if (here) b.title = L.pastOpenHere;
   else if (p.running) {
     b.disabled = true;
-    b.title = "Aperta in un altro terminale: chiudila lì per riprenderla qui";
+    b.title = L.pastOpenElsewhere;
   }
   b.addEventListener("click", run);
   return b;
@@ -536,14 +561,14 @@ function renderPicker() {
   if (busy.length) {
     const lbl = document.createElement("span");
     lbl.className = "lbl";
-    lbl.textContent = "Aperte in un altro terminale";
+    lbl.textContent = L.openElsewhere;
     rows.push(lbl, ...busy.map((p) => pastRow(p, () => {})));
   }
   const list = $("r-list");
   list.replaceChildren(...rows);
   list.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
   $("r-empty").hidden = match.length > 0;
-  $("r-empty").textContent = loading ? "Carico le sessioni…" : past.length ? "Nessuna sessione corrisponde." : "Nessuna sessione di Claude Code da riprendere.";
+  $("r-empty").textContent = loading ? L.loadingSessions : past.length ? L.noMatch : L.noPast;
 }
 
 // The list from the last opening shows at once, then the fresh one replaces it.
@@ -577,7 +602,7 @@ $filter.addEventListener("keydown", (e) => {
 $resume.addEventListener("close", () => active?.term.focus());
 
 async function newSession() {
-  const dir = await open({ directory: true, multiple: false, defaultPath: settings.recent[0] ?? home, title: "Cartella del progetto" });
+  const dir = await open({ directory: true, multiple: false, defaultPath: settings.recent[0] ?? home, title: L.projectFolder });
   if (typeof dir === "string") await createSession(dir);
 }
 
@@ -603,9 +628,9 @@ void win.onCloseRequested((e) => {
   e.preventDefault();
   toast({
     glyph: "!",
-    title: busy === 1 ? "Una sessione è ancora al lavoro" : `${busy} sessioni sono ancora al lavoro`,
-    text: "Chiudendo xclaude si chiudono anche loro.",
-    action: "Chiudi comunque",
+    title: L.stillWorking(busy),
+    text: L.closingCloses,
+    action: L.closeAnyway,
     run: () => void win.destroy(),
     attn: true,
   });
@@ -684,7 +709,7 @@ setInterval(() => {
     // quiet after such a key, the session is waiting for a new prompt.
     if (s.armed && now - s.armed > 1500 && now - s.lastOutput > 1200 && (s.status === "working" || s.status === "waiting")) {
       s.armed = 0;
-      setStatus(s, "idle", "interrotta");
+      setStatus(s, "idle", { key: "interrupted", text: "" });
     }
   }
 }, 500);
@@ -697,6 +722,7 @@ async function main() {
     readSystemDark(),
   ]);
   applyTheme(isDark());
+  setLang(resolveLang(settings.language));
   void getVersion().then((v) => ($("s-version").textContent = `xclaude ${v}`));
   // Follow a system switch (quick settings) when the window comes back into focus.
   void win.onFocusChanged(async ({ payload: focused }) => {
@@ -713,4 +739,6 @@ async function main() {
   summary();
 }
 
+// The system language until the settings arrive.
+setLang(resolveLang("system"));
 void main();
