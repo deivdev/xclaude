@@ -21,6 +21,28 @@ async fn git_branch(cwd: String) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
+/// The PRIMARY selection (select to copy, middle click to paste): the clipboard
+/// plugin only reads CLIPBOARD. GTK owns it, so ask on the main thread.
+#[tauri::command]
+async fn read_primary(app: tauri::AppHandle) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        let (tx, mut rx) = tauri::async_runtime::channel(1);
+        app.run_on_main_thread(move || {
+            gtk::Clipboard::get(&gtk::gdk::SELECTION_PRIMARY).request_text(move |_, text| {
+                let _ = tx.try_send(text.map(String::from));
+            });
+        })
+        .ok()?;
+        rx.recv().await.flatten()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app;
+        None
+    }
+}
+
 /// The default size can exceed small or scaled screens: maximize instead.
 fn fit_to_screen(win: &tauri::WebviewWindow) {
     let monitor = win.current_monitor().ok().flatten().or_else(|| win.primary_monitor().ok().flatten());
@@ -63,6 +85,7 @@ pub fn run() {
             profile::terminal_profile,
             profile::system_dark,
             git_branch,
+            read_primary,
             history::past_sessions,
             settings::get_settings,
             settings::set_settings,

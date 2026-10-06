@@ -57,8 +57,8 @@ const clipboard: IClipboardProvider = {
 
 /**
  * A terminal that behaves like gnome-terminal: Ctrl+Shift+C/V copy and paste,
- * Ctrl+V reaches the program (Claude Code pastes images with it), Shift+Enter
- * inserts a newline in Claude Code's prompt.
+ * Ctrl+V reaches the program (Claude Code pastes images with it), middle click
+ * pastes the selection, Shift+Enter inserts a newline in Claude Code's prompt.
  */
 export function createTerminal(p: Profile, theme: ITheme, el: HTMLElement, send: (data: string) => void) {
   const term = new Terminal({
@@ -108,6 +108,21 @@ export function createTerminal(p: Profile, theme: ITheme, el: HTMLElement, send:
     }
     return true;
   });
+
+  // WebKitGTK pastes PRIMARY by itself on middle-button release, and the text
+  // reaches the terminal twice. Swallowing the release makes WebKit skip it;
+  // paste once instead, like gnome-terminal: a program that tracks the mouse
+  // gets the click, unless Shift is held.
+  el.addEventListener(
+    "mouseup",
+    (e) => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      if (term.modes.mouseTrackingMode !== "none" && !e.shiftKey) return;
+      void invoke<string | null>("read_primary").then((t) => t && term.paste(t)).catch(() => {});
+    },
+    true,
+  );
 
   term.open(el);
   try {
