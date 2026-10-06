@@ -1,0 +1,39 @@
+/* Mockups for the README: the app's own stylesheet, frozen in one frame and
+   framed as a window on a transparent background. Render with render.sh. */
+html, body { height: auto; overflow: visible; background: transparent; }
+body { padding: 36px 44px 56px; width: max-content; }
+
+.frame {
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--chrome);
+  box-shadow: 0 0 0 1px #ffffff1a, 0 24px 60px #00000070, 0 6px 18px #00000050;
+}
+.frame .win { height: 100%; }
+
+/* one frame of the animations */
+.card.st-working::after { animation: none; }
+.card.a1::after { --a: 130deg; }
+.card.a2::after { --a: 290deg; }
+.card.st-waiting {
+  animation: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--wait) 35%, transparent), 0 0 22px 1px color-mix(in srgb, var(--wait) 55%, transparent);
+}
+.toast { animation: none; }
+
+/* Claude Code in the terminal, gnome-terminal colors */
+.tty {
+  margin: 0;
+  padding: 6px 14px 0 4px;
+  font: 13.5px/1.36 var(--mono);
+  color: #e8e8e8;
+  white-space: pre;
+  overflow: hidden;
+}
+.tty .d { color: #8b8b8f; }
+.tty .o { color: #d77757; }
+.tty .g { color: #4eba65; }
+.tty .b { font-weight: 700; }
+.tty .you { background: #3a3a3d; color: #ffffff; }
+.tty .add { display: inline-block; width: 104ch; background: #22462b; color: #d6f5dc; }
+.tty .rule { color: #5a5a5e; }

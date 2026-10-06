@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="../../src/style.css" />
+    <link rel="stylesheet" href="mockup.css" />
+    <style>
+      .states { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; padding: 26px 26px 28px; background: var(--side); }
+      .states .card { min-height: 0; }
+      .cap { margin: 16px 2px 0; font-size: 13px; line-height: 1.5; color: var(--fg-dim); }
+      .cap b { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; font-size: 13.5px; color: var(--fg); }
+      .cap b::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--k); }
+    </style>
+  </head>
+  <body>
+    <div class="frame" style="width: 1280px">
+      <div class="states">
+        <div>
+          <div class="card st-working a1">
+            <span class="gl">✶</span><span class="ti">Rewrite the getting started guide</span><span class="tm">3:18</span>
+            <span class="pt">docs-site · main</span>
+            <span class="dt"><b>Lavora</b><span class="dx"> · Edit(src/content/start.md)</span></span>
+          </div>
+          <p class="cap"><b style="--k: var(--work)">Working</b>A light runs around the border while Claude thinks and runs tools.</p>
+        </div>
+        <div>
+          <div class="card st-waiting">
+            <span class="gl">!</span><span class="ti">Add rate limiting to /checkout</span><span class="tm">0:42</span>
+            <span class="pt">shop-api · feat/rate-limit</span>
+            <span class="dt"><b>Ti aspetta</b><span class="dx"> · permesso: Bash(pnpm test)</span></span>
+          </div>
+          <p class="cap"><b style="--k: var(--wait)">Needs you</b>Pulses for a permission, a question or a plan to approve, with a toast and a desktop notification.</p>
+        </div>
+        <div>
+          <div class="card st-idle">
+            <span class="gl">✓</span><span class="ti">Fix dark mode flicker on load</span><span class="tm">ora</span>
+            <span class="pt">web-app · fix/theme-flash</span>
+            <span class="dt"><b>Finito</b><span class="dx"> · aspetta il prossimo prompt</span></span>
+          </div>
+          <p class="cap"><b style="--k: var(--idle)">Done</b>The turn is over: Claude is waiting for your next prompt.</p>
+        </div>
+        <div>
+          <div class="card st-ended">
+            <span class="gl">$</span><span class="ti">Release notes for 2.4</span><span class="tm">12 min fa</span>
+            <span class="pt">mobile · main</span>
+            <span class="dt"><b>Shell</b><span class="dx"> · Claude Code è chiuso</span></span>
+          </div>
+          <p class="cap"><b style="--k: var(--muted)">Shell</b>Claude Code has exited; the shell it ran in is still there.</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

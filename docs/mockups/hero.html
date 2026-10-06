@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="../../src/style.css" />
+    <link rel="stylesheet" href="mockup.css" />
+  </head>
+  <body>
+    <div class="frame" style="width: 1280px; height: 780px">
+      <div class="win">
+        <header class="tb">
+          <div class="logo"><i aria-hidden="true">&gt;_</i>xclaude</div>
+          <div class="wtitle"><b>Fix dark mode flicker on load</b> — web-app</div>
+          <div class="r">
+            <button class="btn" type="button"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v1.8M8 12.4v1.8M1.8 8h1.8M12.4 8h1.8M3.6 3.6l1.3 1.3M11.1 11.1l1.3 1.3M3.6 12.4l1.3-1.3M11.1 4.9l1.3-1.3" /></svg></button>
+            <button class="btn" type="button"><svg viewBox="0 0 16 16"><path d="M4 11V7a4 4 0 0 1 8 0v4l1.2 1.5H2.8L4 11zM6.5 14h3" /></svg><span class="badge">1</span></button>
+            <button class="btn" type="button"><svg viewBox="0 0 16 16"><path d="M4 8.5h8" /></svg></button>
+            <button class="btn" type="button"><svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1" /></svg></button>
+            <button class="btn" type="button"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg></button>
+          </div>
+        </header>
+        <div class="body">
+          <nav class="side">
+            <div class="sh">
+              <span class="lbl">Sessioni</span>
+              <span class="counts"><span style="--k: var(--wait)">1</span><span style="--k: var(--work)">2</span><span style="--k: var(--idle)">1</span></span>
+              <button class="btn" type="button"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" /></svg></button>
+            </div>
+            <div class="list">
+              <div class="card st-waiting">
+                <span class="gl">!</span><span class="ti">Add rate limiting to /checkout</span><span class="tm">0:42</span>
+                <span class="pt">shop-api · feat/rate-limit</span>
+                <span class="dt"><b>Ti aspetta</b><span class="dx"> · permesso: Bash(pnpm test --filter api)</span></span>
+              </div>
+              <div class="card st-working a1">
+                <span class="gl">✶</span><span class="ti">Rewrite the getting started guide</span><span class="tm">3:18</span>
+                <span class="pt">docs-site · main</span>
+                <span class="dt"><b>Lavora</b><span class="dx"> · Edit(src/content/start.md)</span></span>
+              </div>
+              <div class="card st-idle active">
+                <span class="gl">✓</span><span class="ti">Fix dark mode flicker on load</span><span class="tm">ora</span>
+                <span class="pt">web-app · fix/theme-flash</span>
+                <span class="dt"><b>Finito</b><span class="dx"> · aspetta il prossimo prompt</span></span>
+              </div>
+              <div class="card st-working a2">
+                <span class="gl">✻</span><span class="ti">Bump the Postgres image to 17</span><span class="tm">1:05</span>
+                <span class="pt">infra · chore/pg17</span>
+                <span class="dt"><b>Lavora</b><span class="dx"> · Bash(docker compose up -d db)</span></span>
+              </div>
+              <div class="card st-ended">
+                <span class="gl">$</span><span class="ti">Release notes for 2.4</span><span class="tm">12 min fa</span>
+                <span class="pt">mobile · main</span>
+                <span class="dt"><b>Shell</b><span class="dx"> · Claude Code è chiuso</span></span>
+              </div>
+            </div>
+            <div class="foot">
+              <button class="btn" type="button">
+                <svg viewBox="0 0 16 16"><path d="M2 4.5V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3.5H3A1 1 0 0 0 2 4.5zM8 7.2v3.6M6.2 9h3.6" /></svg>
+                Nuova sessione <kbd>Ctrl+Shift+N</kbd>
+              </button>
+              <button class="btn" type="button">
+                <svg viewBox="0 0 16 16"><path d="M2.6 8a5.4 5.4 0 1 0 1.6-3.8M2.6 2.6v2.6h2.6M8 5.2v3l2 1.3" /></svg>
+                Riprendi una sessione <kbd>Ctrl+Shift+R</kbd>
+              </button>
+            </div>
+          </nav>
+          <main class="main">
+            <div class="strip"><span>Modello <b>Opus 5.5</b></span><span>Contesto <b>31k</b> token</span><span class="sp">~/code/web-app · fix/theme-flash</span></div>
+            <div class="terms">
+              <div class="term active"><pre class="tty"><span class="you">&gt; the page flashes white before switching to dark mode, fix it </span>
+
+● The <span class="b">dark</span> class is set in a React effect, after the first paint.
+  I'll move it to an inline script in &lt;head&gt;.
+
+<span class="g">●</span> <span class="b">Read</span>(src/main.tsx)
+  <span class="d">⎿  Read 84 lines</span>
+
+<span class="g">●</span> <span class="b">Update</span>(index.html)
+  <span class="d">⎿  Updated <span class="b">index.html</span> with 5 additions</span>
+<span class="add">        6 +    &lt;script&gt;</span>
+<span class="add">        7 +      const t = localStorage.getItem("theme");</span>
+<span class="add">        8 +      const dark = t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;</span>
+<span class="add">        9 +      document.documentElement.classList.toggle("dark", dark);</span>
+<span class="add">       10 +    &lt;/script&gt;</span>
+
+<span class="g">●</span> <span class="b">Update</span>(src/main.tsx)
+  <span class="d">⎿  Updated <span class="b">src/main.tsx</span> with 1 addition and 9 removals</span>
+
+<span class="g">●</span> <span class="b">Bash</span>(pnpm build &amp;&amp; pnpm test)
+  <span class="d">⎿  <span class="g">✓</span> 42 tests passed</span>
+  <span class="d">   <span class="g">✓</span> built in 2.1s</span>
+
+● Fixed: the theme is applied before the first paint, so the page no longer
+  flashes. The old effect in main.tsx is gone.
+
+<span class="o">✻</span> <span class="d">Cooked for 1m 12s</span>
+
+<span class="rule">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+&gt; <span class="d">Try "add a test for the theme script"</span>
+<span class="rule">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+  <span class="d">? for shortcuts</span></pre></div>
+            </div>
+          </main>
+        </div>
+        <div class="toasts">
+          <div class="toast attn">
+            <span class="gl">!</span>
+            <div class="tx"><b>shop-api ti aspetta</b><span>permesso: Bash(pnpm test --filter api)</span></div>
+            <button class="btn" type="button">Apri</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
