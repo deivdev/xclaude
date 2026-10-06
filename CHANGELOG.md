@@ -5,6 +5,8 @@ Scrivi le novità sotto "Unreleased": `pnpm release` le sposta nella nuova versi
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-06
+
 ### Aggiunto
 
 - Interfaccia anche in inglese. La lingua si sceglie nelle impostazioni, sotto il tema: Sistema (inglese, o italiano se il sistema è in italiano), English, Italiano.
