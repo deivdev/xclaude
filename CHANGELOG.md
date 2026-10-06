@@ -5,6 +5,11 @@ Scrivi le novità sotto "Unreleased": `pnpm release` le sposta nella nuova versi
 
 ## [Unreleased]
 
+### Modificato
+
+- Licenza GPL-3.0.
+- La voce nel menu delle applicazioni è in inglese.
+
 ## [1.2.0] - 2026-10-06
 
 ### Aggiunto

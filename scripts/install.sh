@@ -24,8 +24,8 @@ cat > "$share/applications/xclaude.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=xclaude
-GenericName=Sessioni Claude Code
-Comment=Più sessioni di Claude Code in una finestra, con lo stato di ognuna
+GenericName=Claude Code sessions
+Comment=Several Claude Code sessions in one window, with the state of each
 Exec=$bin/xclaude
 Icon=xclaude
 Terminal=false

@@ -62,11 +62,13 @@ Requirements:
 - Fedora: `sudo dnf install webkit2gtk4.1-devel gtk3-devel libsoup3-devel javascriptcoregtk4.1-devel librsvg2-devel libappindicator-gtk3-devel libxdo-devel`
 
 ```sh
+git clone https://github.com/deivdev/xclaude.git
+cd xclaude
 pnpm install
 pnpm install-app   # builds and installs to ~/.local, with a launcher entry
 ```
 
-Run `pnpm install-app` again to upgrade.
+To upgrade, `git pull` and run `pnpm install-app` again.
 
 ## Development
 
@@ -95,3 +97,7 @@ pnpm install-app
 Every `claude` starts with `--settings` that add HTTP hooks pointing at a local server inside
 the app; the session id travels in a header taken from `XCLAUDE_SID`. Esc, Ctrl+C and denied
 permissions fire no hook: the app recognizes them from the keys sent to the terminal.
+
+## License
+
+[GPL-3.0](LICENSE)
