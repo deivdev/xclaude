@@ -5,6 +5,10 @@ Write the changes under "Unreleased": `pnpm release` moves them into the new ver
 
 ## [Unreleased]
 
+### Fixed
+
+- On Linux the window no longer dies when WebKitGTK's GPU compositor crashes: xclaude starts WebKit with compositing off (`WEBKIT_DISABLE_COMPOSITING_MODE=0` turns it back on).
+
 ## [1.2.1] - 2026-10-06
 
 ### Added
