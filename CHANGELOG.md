@@ -5,6 +5,8 @@ Write the changes under "Unreleased": `pnpm release` moves them into the new ver
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-08
+
 ### Fixed
 
 - On Linux the window no longer dies when WebKitGTK's Skia compositor crashes: xclaude starts WebKit with its TextureMapper compositor, still on the GPU (`WEBKIT_USE_SKIA_FOR_COMPOSITION=1` brings Skia back).
