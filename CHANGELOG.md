@@ -7,7 +7,7 @@ Write the changes under "Unreleased": `pnpm release` moves them into the new ver
 
 ### Fixed
 
-- On Linux the window no longer dies when WebKitGTK's GPU compositor crashes: xclaude starts WebKit with compositing off (`WEBKIT_DISABLE_COMPOSITING_MODE=0` turns it back on).
+- On Linux the window no longer dies when WebKitGTK's Skia compositor crashes: xclaude starts WebKit with its TextureMapper compositor, still on the GPU (`WEBKIT_USE_SKIA_FOR_COMPOSITION=1` brings Skia back).
 
 ## [1.2.1] - 2026-10-06
 
